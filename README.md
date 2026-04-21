@@ -53,8 +53,7 @@ Exécuter les notebooks dans l'ordre :
 # Enregistrer le kernel Jupyter avec l'environnement du projet
 uv run python -m ipykernel install --user --name projet-qualite-air --display-name "Python (projet-qualite-air)"
 
-# Lancer Jupyter
-uv run jupyter notebook
+# Assurer vous ensuite de vous être bien placé dans l'environnement virtuel du projet por executer les codes
 ```
 
 | Notebook | Description |

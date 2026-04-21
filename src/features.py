@@ -132,3 +132,33 @@ def add_target(df: pd.DataFrame) -> pd.DataFrame:
         f"NaN = {df['depasse_seuil_24h'].isna().sum()}"
     )
     return df
+
+
+
+def imputer_par_fenetre(df: pd.DataFrame,
+                         colonnes: list[str],
+                         fenetre: int = 6) -> pd.DataFrame:
+    """
+    Impute les valeurs manquantes par interpolation linéaire locale
+    sur une fenêtre de `fenetre` observations de chaque côté, par station.
+    """
+    df = df.copy()
+    df = df.sort_values(["code_station", "datetime_debut"]).reset_index(drop=True)
+
+    for col in colonnes:
+        if col not in df.columns:
+            logger.warning(f"Colonne {col} absente — skip")
+            continue
+
+        df[col] = (
+            df.groupby("code_station")[col]
+            .transform(lambda x: x.interpolate(
+                method="linear",
+                limit=fenetre,
+                limit_direction="both"
+            ))
+        )
+        taux = df[col].isna().mean()
+        logger.info(f"Imputation {col} : NaN résiduels = {taux:.1%}")
+
+    return df

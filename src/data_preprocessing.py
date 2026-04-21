@@ -584,3 +584,75 @@ def graphique_bar_depassements_stations(df, station="station", seuil="depassemen
     plt.xticks(rotation=45)
     plt.tight_layout()
     return fig, ax
+
+# ============================================================================
+# 4. ANALYSE DES CORRÉLATIONS
+# ============================================================================
+
+
+def graphique_heatmap_correlation(df, colonnes_numeriques=None, method='spearman', figsize=(12, 10)):
+    """
+    Heatmap de la matrice de corrélation.
+    Visualise les corrélations avec code couleur.
+    Args:
+        df (pd.DataFrame): DataFrame
+        colonnes_numeriques (list): Colonnes à corréler
+        method (str): Méthode de corrélation ('pearson' ou 'spearman')
+        figsize (tuple): Dimensions de la figure
+    Returns:
+        fig, ax: Objet figure et axes matplotlib
+    Exemple:
+        >>> fig, ax = graphique_heatmap_correlation(df)
+        >>> fig, ax = graphique_heatmap_correlation(df, method='pearson')
+    """
+    if colonnes_numeriques is None:
+        colonnes_numeriques = df.select_dtypes(include=[np.number]).columns.tolist()
+    fig, ax = plt.subplots(figsize=figsize)
+    corr_matrix = df[colonnes_numeriques].corr(method=method)
+    sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', center=0,
+                square=True, ax=ax, cbar_kws={'label': 'Corrélation'})
+    ax.set_title(f'Heatmap - Matrice de Corrélation ({method.capitalize()})', 
+                 fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    return fig, ax
+
+
+def graphique_scatter_pm25(df, colonne_x="vitesse_vent_ms", colonne_y="pm25", 
+                            label_x=None, label_y=None, figsize=(12, 6)):
+    """
+    Scatter plot: PM2.5 vs une variable quelconque. 
+    Args:
+        df (pd.DataFrame): DataFrame
+        colonne_x (str): Colonne pour l'axe X (défaut: "vitesse_vent_ms")
+        colonne_y (str): Colonne pour l'axe Y (défaut: "pm25_µg_m3")
+        label_x (str): Label personnalisé pour l'axe X (optionnel)
+        label_y (str): Label personnalisé pour l'axe Y (optionnel)
+        figsize (tuple): Dimensions de la figure 
+    Returns:
+        fig, ax: Objet figure et axes matplotlib
+    Exemple:
+        >>> fig, ax = graphique_scatter_pm25(df)
+        >>> fig, ax = graphique_scatter_pm25(df, colonne_x='temperature', colonne_y='pm25_µg_m3')
+        >>> fig, ax = graphique_scatter_pm25(df, colonne_x='humidite', colonne_y='pm25_µg_m3',
+        ...                                   label_x='Humidité (%)', label_y='PM2.5 (µg/m³)')
+    """
+    # Vérifier que les colonnes existent
+    if colonne_x not in df.columns or colonne_y not in df.columns:
+        raise ValueError(f"Colonnes invalides. Colonnes disponibles: {df.columns.tolist()}")
+    # Supprimer les NaN
+    df_clean = df[[colonne_x, colonne_y]].dropna()
+    fig, ax = plt.subplots(figsize=figsize)
+    # Scatter plot
+    ax.scatter(df_clean[colonne_x], df_clean[colonne_y], alpha=0.5, s=30, color='steelblue')
+    # Corrélation (Pearson par défaut)
+    corr = df_clean[colonne_x].corr(df_clean[colonne_y], method="spearman")
+    # Labels
+    xlabel = label_x if label_x else colonne_x
+    ylabel = label_y if label_y else colonne_y
+    ax.set_xlabel(xlabel, fontsize=12, fontweight='bold')
+    ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
+    ax.set_title(f'{ylabel} vs {xlabel} (r = {corr:.3f})', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    return fig, ax

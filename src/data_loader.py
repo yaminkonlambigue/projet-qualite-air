@@ -21,7 +21,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# ── Client S3 ────────────────────────────────────────────────────
+#  Client S3 
 
 def get_s3_client():
     return boto3.client(
@@ -55,7 +55,7 @@ def read_s3_csv_gz(key: str, **kwargs) -> pd.DataFrame:
         return pd.read_csv(f, **kwargs)
 
 
-# ── Chargement LCSQA ─────────────────────────────────────────────
+#  Chargement LCSQA 
 
 def load_lcsqa() -> pd.DataFrame:
     """
@@ -112,7 +112,7 @@ def load_lcsqa() -> pd.DataFrame:
     return consolidated
 
 
-# ── Chargement Météo-France ───────────────────────────────────────
+# Chargement Météo-France 
 
 # Colonnes utiles uniquement
 COLS_METEO = [
@@ -180,7 +180,7 @@ def load_meteo() -> pd.DataFrame:
     logger.info(f"Météo consolidée : {len(consolidated)} lignes | {consolidated['code_station_meteo'].nunique()} stations")
     return consolidated
 
-# ── Chargement IREP ──────────────────────────────────────────────
+#  Chargement IREP 
 
 def load_irep() -> pd.DataFrame:
     """
@@ -230,4 +230,24 @@ def load_dataset_consolide() -> pd.DataFrame:
     df["datetime_debut"] = pd.to_datetime(df["datetime_debut"])
     logger.info(f"Dataset consolidé : {len(df):,} lignes | {len(df.columns)} colonnes")
     logger.info(f"Période : {df['datetime_debut'].min()} → {df['datetime_debut'].max()}")
+    return df
+
+def clean_valeurs_negatives(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remplace par NaN les valeurs négatives des variables
+    qui doivent être physiquement positives ou nulles.
+    """
+    cols_positives = [
+        "pm25_brute",
+        "vent_vitesse_ms",
+        "humidite_pct",
+        "pluie_mm",
+        "nb_installations_5km",
+    ]
+    for col in cols_positives:
+        if col in df.columns:
+            n = (df[col] < 0).sum()
+            if n > 0:
+                df.loc[df[col] < 0, col] = pd.NA
+                logger.info(f"{col} : {n} valeurs négatives remplacées par NaN")
     return df

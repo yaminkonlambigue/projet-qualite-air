@@ -2,7 +2,7 @@
 Collecte des données IREP - Registre des émissions polluantes
 Source : files.georisques.fr
 Années : 2021-2024 (donnée statique annuelle)
-Filtre : Île-de-France
+Région : Île-de-France
 """
 
 import os
@@ -20,7 +20,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# ── Configuration ────────────────────────────────────────────────
+#  Configuration 
 
 ANNEES_IREP = [2021, 2022, 2023, 2024]
 BASE_URL    = "https://files.georisques.fr/irep/{annee}.zip"
@@ -30,7 +30,7 @@ RAW_DIR = Path("data/raw/irep")
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ── Téléchargement et extraction ─────────────────────────────────
+# Téléchargement et extraction 
 
 def download_and_extract(url: str, annee: int) -> Path:
     """
@@ -62,7 +62,7 @@ def download_and_extract(url: str, annee: int) -> Path:
 
 
 
-# ── Chargement et filtrage IDF ────────────────────────────────────
+#  Chargement et filtrage IDF 
 
 def load_and_filter(extract_dir: Path, annee: int) -> pd.DataFrame:
     """
@@ -76,7 +76,7 @@ def load_and_filter(extract_dir: Path, annee: int) -> pd.DataFrame:
     emissions_path      = sub / "emissions.csv"
     etablissements_path = sub / "etablissements.csv"
 
-    # ── Emissions ──
+    # Emissions
     df_em = pd.read_csv(emissions_path, sep=";", encoding="utf-8", low_memory=False)
     df_em.columns = df_em.columns.str.strip().str.lower()
     
@@ -93,7 +93,7 @@ def load_and_filter(extract_dir: Path, annee: int) -> pd.DataFrame:
         ].copy()
         logger.info(f"  Après filtre AIR : {len(df_em_idf)} lignes")
 
-    # ── Etablissements (coordonnées GPS) ──
+    #  Etablissements (coordonnées GPS) 
     df_et = pd.read_csv(etablissements_path, sep=";", encoding="utf-8", low_memory=False)
     df_et.columns = df_et.columns.str.strip().str.lower()
    
@@ -103,7 +103,7 @@ def load_and_filter(extract_dir: Path, annee: int) -> pd.DataFrame:
     ][["identifiant", "coordonnees_x", "coordonnees_y", "code_epsg"]].copy()
     logger.info(f"  etablissements.csv IDF : {len(df_et_idf)} établissements")
 
-    # ── Jointure ──
+    # Jointure
     df_merged = df_em_idf.merge(df_et_idf, on="identifiant", how="left")
     df_merged["annee"] = annee
     logger.info(f"  Après jointure : {len(df_merged)} lignes")
@@ -111,7 +111,7 @@ def load_and_filter(extract_dir: Path, annee: int) -> pd.DataFrame:
     return df_merged
 
 
-# ── Upload S3 ────────────────────────────────────────────────────
+#  Upload S3 
 
 def upload_to_s3(filepath: Path) -> None:
     """Upload un fichier local vers S3 SSPCloud."""
@@ -128,7 +128,7 @@ def upload_to_s3(filepath: Path) -> None:
     logger.info(f"Uploadé sur S3 : s3://{bucket}/{key}")
 
 
-# ── Fonction principale ──────────────────────────────────────────
+#  Fonction principale 
 
 def collect_irep() -> None:
     """

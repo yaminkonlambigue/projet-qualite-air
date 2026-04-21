@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 SEUIL_PM25 = 25.0
 
 
-# ── Variables temporelles ─────────────────────────────────────────
+#  Variables temporelles 
 
 def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -31,24 +31,24 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     df["mois"]         = df["datetime_debut"].dt.month
     df["annee"]        = df["datetime_debut"].dt.year
     df["is_weekend"]   = (df["jour_semaine"] >= 5).astype(int)
-
-    # Saison météorologique
-    def get_saison(mois: int) -> str:
-        if mois in [12, 1, 2]:  return "hiver"
-        if mois in [3, 4, 5]:   return "printemps"
-        if mois in [6, 7, 8]:   return "ete"
-        return "automne"
-
-    df["saison"] = df["mois"].apply(get_saison)
-
-    logger.info(
-        f"Features temporelles ajoutées : heure, jour_semaine, mois, "
-        f"annee, is_weekend, saison"
-    )
     return df
 
+    # Saison météorologique
+    def get_saison(date) -> str:
+        mois = date.month
+        jour = date.day
+        if (mois == 12 and jour >= 21) or (mois in [1, 2]) or (mois == 3 and jour <= 20):
+            return "hiver"
+        if (mois == 3 and jour >= 21) or (mois in [4, 5]) or (mois == 6 and jour <= 20):
+            return "printemps"
+        if (mois == 6 and jour >= 21) or (mois in [7, 8]) or (mois == 9 and jour <= 22):
+            return "ete"
+        return "automne"
 
-# ── Lags de PM2.5 ────────────────────────────────────────────────
+    df["saison"] = df["datetime_debut"].apply(get_saison)
+
+
+#  Lags de PM2.5 
 
 def add_lags(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -90,7 +90,7 @@ def add_lags(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ── Variable cible ────────────────────────────────────────────────
+# Variable cible
 
 def add_target(df: pd.DataFrame) -> pd.DataFrame:
     """

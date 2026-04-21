@@ -1,7 +1,7 @@
 """
 Collecte des données météo horaires Météo-France
 Source : meteo.data.gouv.fr / data.gouv.fr
-Départements : Île-de-France (75, 77, 78, 91, 92, 93, 94, 95)
+zone : Île-de-France (75, 77, 78, 91, 92, 93, 94, 95)
 Années : 2021-2025
 """
 

@@ -1,9 +1,9 @@
 """
 Jointures spatiales entre les sources de données.
 - join_meteo_to_lcsqa()  : associe chaque station LCSQA à la station météo
-                           la plus proche puis merge temporel exact sur l'heure
+                           la plus proche puis fait un merge temporel exact sur l'heure
 - compute_irep_density() : calcule le nombre d'installations industrielles PM
-                           dans un rayon autour de chaque station LCSQA
+                           dans un rayon donnée (Ici 5 Km) autour de chaque station LCSQA
 """
 
 import logging
@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-# ── Distance Haversine ────────────────────────────────────────────
+# Distance Haversine 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calcule la distance en km entre deux points GPS (WGS84)."""
@@ -27,7 +27,7 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return R * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
-# ── Extraction des métadonnées de stations ───────────────────────
+# Extraction des métadonnées de stations 
 
 def get_stations_lcsqa(df_lcsqa: pd.DataFrame) -> pd.DataFrame:
     """Extrait les métadonnées uniques des stations LCSQA."""
@@ -49,14 +49,14 @@ def get_stations_meteo(df_meteo: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-# ── Mapping stations LCSQA → Météo ───────────────────────────────
+#  Mapping stations LCSQA et stations  Météo 
 
 def find_nearest_meteo_station(stations_lcsqa: pd.DataFrame,
                                 stations_meteo: pd.DataFrame) -> pd.DataFrame:
     """
-    Pour chaque station LCSQA, trouve la station météo complète la plus proche
-    via la distance Haversine.
-    Retourne un DataFrame de mapping : code_station → code_station_meteo + distance_km.
+    Pour chaque station LCSQA, trouve la station météo complète (collecte de données vent et précipitations)
+     la plus proche  la distance Haversine.
+    Retourne un DataFrame de mapping : code_station + code_station_meteo + distance_km.
     """
     mappings = []
     for _, row_lcsqa in stations_lcsqa.iterrows():
@@ -84,7 +84,7 @@ def find_nearest_meteo_station(stations_lcsqa: pd.DataFrame,
     return df_mapping
 
 
-# ── Jointure LCSQA ↔ Météo ────────────────────────────────────────
+#  Jointure LCSQA et Météo 
 
 def join_meteo_to_lcsqa(df_lcsqa: pd.DataFrame,
                          df_meteo: pd.DataFrame) -> pd.DataFrame:
@@ -92,7 +92,7 @@ def join_meteo_to_lcsqa(df_lcsqa: pd.DataFrame,
     Associe les variables météo à chaque observation LCSQA via :
     1. Filtrage des stations météo complètes
        (température + vent + pluie + humidité >= 1000 mesures chacune)
-    2. Mapping spatial : station LCSQA → station météo complète la plus proche
+    2. Mapping spatial : station LCSQA et station météo complète la plus proche
     3. Merge temporel exact sur l'heure
 
     Les NaN résiduels correspondent à des heures sans mesure météo
@@ -174,7 +174,7 @@ def join_meteo_to_lcsqa(df_lcsqa: pd.DataFrame,
     return df
 
 
-# ── Jointure LCSQA ↔ IREP ────────────────────────────────────────
+# Jointure LCSQA et IREP 
 
 def compute_irep_density(df_lcsqa: pd.DataFrame,
                           df_irep: pd.DataFrame,

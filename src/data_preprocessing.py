@@ -12,49 +12,6 @@ from plotly.subplots import make_subplots
 # ============================================================================
 
 
-def tableau_stats_descriptives(df, colonne='pm25_µg_m3'):
-    """
-    Génère un tableau complet de statistiques descriptives pour PM2.5.
-    Affiche : moyenne, médiane, écart-type, min, max, déciles et quartiles.
-    Args:
-        df (pd.DataFrame): DataFrame contenant les données
-        colonne (str): Nom de la colonne à analyser (défaut: 'pm25_µg_m3')
-    Returns:
-        pd.DataFrame: Tableau des statistiques
-    Exemple:
-        >>> stats = tableau_stats_descriptives(df)
-        >>> print(stats)
-    """
-    stats_dict = {
-        'Moyenne': df[colonne].mean(),
-        'Médiane': df[colonne].median(),
-        'Écart-type': df[colonne].std(),
-        'Min': df[colonne].min(),
-        'Q1 (25%)': df[colonne].quantile(0.25),
-        'Q2 (50%)': df[colonne].quantile(0.50),
-        'Q3 (75%)': df[colonne].quantile(0.75),
-        'Max': df[colonne].max(),
-        'D1 (10%)': df[colonne].quantile(0.10),
-        'D9 (90%)': df[colonne].quantile(0.90),
-    }
-    stats_df = pd.DataFrame(list(stats_dict.items()),
-                            columns=['Statistique', 'Valeur (µg/m³)'])
-    stats_df['Valeur (µg/m³)'] = stats_df['Valeur (µg/m³)'].round(2)
-    gt = (GT(stats_df).tab_header(
-          title="STATISTIQUES DESCRIPTIVES - PM2.5",
-          subtitle="Analyse descriptive complète"
-          )
-          .fmt_number(
-          columns=['Valeur (µg/m³)'],
-          decimals=2
-          )
-          .tab_options(
-          container_width="600px"
-          )
-          )
-    return gt.show()
-
-
 def graphique_frequence_depassement(df, colonne="depassement_seuil"):
     """
     Tableau de fréquence binaire: Dépassement vs Non-dépassement du seuil.
@@ -461,9 +418,55 @@ def graphique_heatmap_heure_jour(df, colonne="pm25", heure="heure", jour_semaine
     return fig, ax
 
 
+def graphique_moyennes_saisonnieres(df, colonne="pm25", col_saison="saison"):
+    """
+    Graphique en barres des concentrations moyennes de PM2.5 par saison.
+    Args:
+        df (pd.DataFrame): DataFrame avec colonne spécifiée
+        colonne (str): Colonne à analyser (ex: "pm25_brute")
+        col_saison (str): Colonne contenant les saisons (ex: "saison")
+    """
+    # 1. Calcul des moyennes par saison
+    seasonal = df.groupby(col_saison)[colonne].agg('mean').round(2)
+    # 2. Définition de l'ordre logique et des couleurs spécifiques
+    ordre_saisons = ['hiver', 'printemps', 'ete', 'automne']
+    # On ne garde que les saisons présentes dans le dataframe
+    saisons_presentes = [s for s in ordre_saisons if s in seasonal.index]
+    seasonal = seasonal.reindex(saisons_presentes)
+    # Mapping des couleurs par saison
+    color_map = {
+        'Hiver': '#4A90E2',     # Bleu froid
+        'Printemps': '#7ED321', # Vert bourgeon
+        'Été': '#F5A623',       # Jaune/Orange soleil
+        'Automne': '#8B4513'    # Marron feuilles mortes
+    }
+    colors = [color_map.get(s, '#808080') for s in seasonal.index]
+    # 3. Création du graphique
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bars = ax.bar(seasonal.index, seasonal.values, color=colors, 
+                  alpha=0.8, edgecolor='black', linewidth=1.5)
+    # Ajouter les valeurs au-dessus des barres
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                f'{height:.2f}',
+                ha='center', va='bottom', fontsize=11, fontweight='bold')
+    # 4. Mise en forme
+    ax.set_xlabel('Saison', fontsize=12, fontweight='bold')
+    ax.set_ylabel(f'Moyenne {colonne} (µg/m³)', fontsize=12, fontweight='bold')
+    ax.set_title(f'Concentrations moyennes de {colonne} par saison', 
+                 fontsize=14, fontweight='bold', pad=20) 
+    ax.grid(axis='y', alpha=0.3, linestyle='--') 
+    # Ajuster la limite Y pour laisser de la place au texte
+    if not seasonal.empty:
+        ax.set_ylim(0, seasonal.max() * 1.2)    
+    plt.tight_layout()
+    return fig
+
 # ============================================================================
 # 3. ANALYSE SPATIALE (COMPARAISON ENTRE STATIONS)
 # ============================================================================
+
 
 def tableau_comparaison_stations(df, station="station", colonne="pm25", seuil="depassement_seuil", date="date", industrie="nombre_industrie"):
     """
@@ -743,6 +746,41 @@ def graphique_scatter_pm25(df, colonne_x="vitesse_vent_ms", colonne_y="pm25",
     plt.tight_layout()
     return fig, ax
 
+
+def histogramme_densité_superposée(df, colonne, groupe='depasse_seuil_24h', figsize=(12, 6), bins=30):
+    """
+    Crée un seul histogramme avec les deux groupes superposés et leurs courbes de densité.
+    Args:
+        df (pd.DataFrame): DataFrame
+        colonne (str): Colonne quantitative à analyser
+        groupe (str): Colonne binaire (défaut: 'depasse_seuil_24h')
+        figsize (tuple): Dimensions de la figure
+        bins (int): Nombre de bins
+    Returns:
+        fig, ax: Objet figure et axes matplotlib
+    Exemple:
+        >>> fig, ax = histogramme_densité_superposée(df, 'pm25_brute')
+    """
+    df_clean = df[[colonne, groupe]].dropna()
+    groupe_0 = df_clean[df_clean[groupe] == 0][colonne]
+    groupe_1 = df_clean[df_clean[groupe] == 1][colonne]
+    fig, ax = plt.subplots(figsize=figsize)
+    # Histogrammes
+    ax.hist(groupe_0, bins=bins, color='#2E86AB', alpha=0.5, 
+            edgecolor='black', density=True, label='Sans dépassement (0)')
+    ax.hist(groupe_1, bins=bins, color='#A23B72', alpha=0.5, 
+            edgecolor='black', density=True, label='Avec dépassement (1)')
+    # Courbes de densité
+    groupe_0.plot(kind='density', ax=ax, color='#2E86AB', linewidth=2.5)
+    groupe_1.plot(kind='density', ax=ax, color='#A23B72', linewidth=2.5)
+    ax.set_xlabel(colonne, fontsize=12, fontweight='bold')
+    ax.set_ylabel('Densité', fontsize=12, fontweight='bold')
+    ax.set_title(f'Distribution de {colonne} par dépassement de seuil', 
+                 fontsize=14, fontweight='bold')
+    ax.legend(fontsize=11)
+    ax.grid(True, alpha=0.3, axis='y')
+    plt.tight_layout()
+    return fig, ax
 
 # ============================================================================
 # 5. ANALYSE DE PERSISTANCE (AUTO-CORRÉLATION)

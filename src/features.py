@@ -31,7 +31,7 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     df["mois"]         = df["datetime_debut"].dt.month
     df["annee"]        = df["datetime_debut"].dt.year
     df["is_weekend"]   = (df["jour_semaine"] >= 5).astype(int)
-    return df
+    
 
     # Saison météorologique
     def get_saison(date) -> str:
@@ -46,6 +46,7 @@ def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
         return "automne"
 
     df["saison"] = df["datetime_debut"].apply(get_saison)
+    return df
 
 
 #  Lags de PM2.5 

@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 from great_tables import GT, loc, style
 import seaborn as sns
 import numpy as np
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # ============================================================================
 # 1. ANALYSE DESCRITPIVE DE LA VARIABLE CIBLE (PM2.5)
@@ -585,6 +588,89 @@ def graphique_bar_depassements_stations(df, station="station", seuil="depassemen
     plt.tight_layout()
     return fig, ax
 
+
+def tracer_comparaison_carto(df, annee_cible=2025, col_station="code_station", colonne="pm25", 
+    col_industrie="nb_installations_5km", col_lat="lat", col_lon="lon", col_annee="annee"):
+    
+    # 1. Filtrage et Agrégation
+    df_filtered = df[df[col_annee] == annee_cible].copy()
+    df_agg = df_filtered.groupby([col_station, col_lat, col_lon]).agg({
+        colonne: 'mean',
+        col_industrie: 'mean'
+    }).reset_index()
+
+    # 2. Création des subplots
+    fig = make_subplots(
+        rows=1, cols=2,
+        column_widths=[0.5, 0.5],
+        specs=[[{"type": "mapbox"}, {"type": "mapbox"}]],
+        subplot_titles=(
+            f"Moyenne {colonne} ({annee_cible})",
+            f"Densité {col_industrie} ({annee_cible})"
+        )
+    )
+
+    # 3. Carte 1 : Points PM2.5 (Scattermapbox)
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=df_agg[col_lat],
+            lon=df_agg[col_lon],
+            mode='markers',
+            marker=dict(
+                size=14, # Taille du point fixe et net
+                color=df_agg[colonne], # La couleur dépend de la valeur
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(x=0.45, title=colonne)
+            ),
+            customdata=df_agg[col_station],
+            hovertemplate="<b>Station:</b> %{customdata}<br><b>Valeur:</b> %{marker.color:.2f}<extra></extra>",
+        ),
+        row=1, col=1
+    )
+
+    # 4. Carte 2 : Points Industries (Scattermapbox)
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=df_agg[col_lat],
+            lon=df_agg[col_lon],
+            mode='markers',
+            marker=dict(
+                size=14,
+                color=df_agg[col_industrie],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(x=1.0, title="Industries")
+            ),
+            customdata=df_agg[col_station],
+            hovertemplate="<b>Station:</b> %{customdata}<br><b>Industries:</b> %{marker.color:.0f}<extra></extra>",
+        ),
+        row=1, col=2
+    )
+
+    # 5. Mise en page
+    center_lat = df_agg[col_lat].mean()
+    center_lon = df_agg[col_lon].mean()
+
+    fig.update_layout(
+        mapbox1=dict(
+            style='carto-positron',
+            center=dict(lat=center_lat, lon=center_lon),
+            zoom=9
+        ),
+        mapbox2=dict(
+            style='carto-positron',
+            center=dict(lat=center_lat, lon=center_lon),
+            zoom=9
+        ),
+        margin={"r": 10, "t": 80, "l": 10, "b": 10},
+        height=600,
+        title_text=f"Analyse Spatiale : {colonne} vs {col_industrie} - {annee_cible}",
+        showlegend=False
+    )
+    
+    return fig.show()
+
 # ============================================================================
 # 4. ANALYSE DES CORRÉLATIONS
 # ============================================================================
@@ -653,6 +739,58 @@ def graphique_scatter_pm25(df, colonne_x="vitesse_vent_ms", colonne_y="pm25",
     ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
     ax.set_title(f'{ylabel} vs {xlabel} (r = {corr:.3f})', fontsize=14, fontweight='bold')
     ax.legend()
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    return fig, ax
+
+
+# ============================================================================
+# 5. ANALYSE DE PERSISTANCE (AUTO-CORRÉLATION)
+# ============================================================================
+
+def graphique_acf_pm25(df, colonne="pm25", date="date", nlags=48, figsize=(14, 6)):
+    """
+    ACF (Autocorrelation Function): corrélation de PM2.5 avec lui-même.
+    Montre jusqu'à combien d'heures la pollution passée explique présente.
+    Args:
+        df (pd.DataFrame): DataFrame avec colonne 'pm25_µg_m3'
+        nlags (int): Nombre de retards à afficher (défaut: 48 heures)
+        figsize (tuple): Dimensions de la figure
+    Returns:
+        fig, ax: Objet figure et axes matplotlib
+    Exemple:
+        >>> fig, ax = graphique_acf_pm25(df, nlags=48)
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    pm25_series = df.sort_values(date)[colonne].values
+    plot_acf(pm25_series, lags=nlags, ax=ax)
+    ax.set_xlabel('Retard (heures)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('ACF', fontsize=12, fontweight='bold')
+    ax.set_title('ACF - Autocorrélation de PM2.5', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    return fig, ax
+
+
+def graphique_pacf_pm25(df, colonne="pm25", date="date", nlags=48, figsize=(14, 6)):
+    """
+    PACF (Partial Autocorrelation Function): corrélation partielle.
+    Isolates l'impact direct de chaque retard sans influence des autres.
+    Args:
+        df (pd.DataFrame): DataFrame avec colonne 'pm25_µg_m3'
+        nlags (int): Nombre de retards à afficher (défaut: 48)
+        figsize (tuple): Dimensions de la figure
+    Returns:
+        fig, ax: Objet figure et axes matplotlib
+    Exemple:
+        >>> fig, ax = graphique_pacf_pm25(df, nlags=48)
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    pm25_series = df.sort_values(date)[colonne].values
+    plot_pacf(pm25_series, lags=nlags, ax=ax)
+    ax.set_xlabel('Retard (heures)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('PACF', fontsize=12, fontweight='bold')
+    ax.set_title('PACF - Autocorrélation Partielle de PM2.5', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     return fig, ax

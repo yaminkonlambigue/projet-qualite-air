@@ -1,246 +1,208 @@
 """
-Collecte des données LCSQA - Concentrations de polluants atmosphériques
-Source : data.gouv.fr / INERIS
-Polluant cible : PM2.5
-Période : 2021-2025 
-Zone : Île-de-France (filtrage post-téléchargement)
+Chargement des données brutes depuis S3 SSPCloud.
+Trois fonctions principales :
+- load_lcsqa()  : concatène les 20 fichiers trimestriels PM2.5
+- load_meteo()  : décompresse et concatène les 16 fichiers météo
+- load_irep()   : charge le fichier IREP consolidé
 """
 
 import io
+import os
+import gzip
 import logging
 from pathlib import Path
 
 import boto3
 import pandas as pd
-import requests
 from dotenv import load_dotenv
-import os
-from tqdm import tqdm
-import datetime
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# ── Configuration 
+# ── Client S3 ────────────────────────────────────────────────────
 
-BASE_URL = (
-    "https://files.data.gouv.fr/lcsqa/"
-    "concentrations-de-polluants-atmospheriques-reglementes/temps-reel"
-)
+def get_s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url          = os.getenv("S3_ENDPOINT_URL"),
+        aws_access_key_id     = os.getenv("S3_ACCESS_KEY"),
+        aws_secret_access_key = os.getenv("S3_SECRET_KEY"),
+        aws_session_token     = os.getenv("S3_SESSION_TOKEN"),
+    )
 
-STATIONS_URL = (
-    "https://static.data.gouv.fr/resources/"
-    "donnees-temps-reel-de-mesure-des-concentrations-de-polluants-atmospheriques-reglementes-1/"
-    "20251210-084445/fr-2025-d-lcsqa-ineris-20251209.xls"
-)
+def get_bucket() -> str:
+    return os.getenv("S3_BUCKET")
 
-ANNEES = [2021, 2022, 2023, 2024, 2025]
-POLLUANT = "PM2.5"
+def list_s3_files(prefix: str) -> list[str]:
+    """Liste les fichiers S3 sous un préfixe donné."""
+    s3 = get_s3_client()
+    response = s3.list_objects_v2(Bucket=get_bucket(), Prefix=prefix)
+    return [obj["Key"] for obj in response.get("Contents", [])]
 
-# Départements Île-de-France
-DEPTS_IDF = ["75", "77", "78", "91", "92", "93", "94", "95"]
+def read_s3_csv(key: str, **kwargs) -> pd.DataFrame:
+    """Lit un fichier CSV depuis S3."""
+    s3 = get_s3_client()
+    obj = s3.get_object(Bucket=get_bucket(), Key=key)
+    return pd.read_csv(io.BytesIO(obj["Body"].read()), **kwargs)
 
-# Exclusion JO Paris 2024
-JO_START = "2024-07-26"
-JO_END = "2024-08-11"
-
-RAW_DIR = Path("data/raw/lcsqa")
-RAW_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# ── Fonctions de collecte 
-
-def build_url(annee: int, mois: int, jour: int) -> str:
-    return f"{BASE_URL}/{annee}/FR_E2_{annee}-{mois:02d}-{jour:02d}.csv"
-
-
-def download_file(url: str, dest: Path) -> bool:
-    """Télécharge un fichier CSV depuis une URL vers un chemin local."""
-    if dest.exists():
-        logger.info(f"Déjà téléchargé : {dest.name} — skip")
-        return True
-    try:
-        response = requests.get(url, timeout=120)
-        response.raise_for_status()
-        dest.write_bytes(response.content)
-        logger.info(f"Téléchargé : {dest.name} ({len(response.content) / 1e6:.1f} Mo)")
-        return True
-    except requests.HTTPError as e:
-        logger.error(f"Erreur HTTP {e.response.status_code} pour {url}")
-        return False
-    except Exception as e:
-        logger.error(f"Erreur inattendue pour {url} : {e}")
-        return False
+def read_s3_csv_gz(key: str, **kwargs) -> pd.DataFrame:
+    """Lit un fichier CSV.gz depuis S3."""
+    s3 = get_s3_client()
+    obj = s3.get_object(Bucket=get_bucket(), Key=key)
+    with gzip.open(io.BytesIO(obj["Body"].read())) as f:
+        return pd.read_csv(f, **kwargs)
 
 
-def download_stations_metadata() -> pd.DataFrame:
+# ── Chargement LCSQA ─────────────────────────────────────────────
+
+def load_lcsqa() -> pd.DataFrame:
     """
-    Télécharge le fichier de métadonnées des stations (Dataset D)
-    contenant les coordonnées GPS de chaque station.
+    Charge et concatène les 20 fichiers trimestriels LCSQA PM2.5.
+    Retourne un DataFrame avec les colonnes normalisées.
     """
-    dest = RAW_DIR / "stations_metadata.xls"
+    prefix = "projet-qualite-air/raw/lcsqa/"
+    keys   = sorted(list_s3_files(prefix))
+    logger.info(f"LCSQA : {len(keys)} fichiers trouvés")
 
-    if not dest.exists():
-        response = requests.get(STATIONS_URL, timeout=60)
-        response.raise_for_status()
-        dest.write_bytes(response.content)
-        logger.info("Métadonnées stations téléchargées")
+    dfs = []
+    for key in keys:
+        df = read_s3_csv(key, sep=",", encoding="utf-8")
+        df.columns = (df.columns
+            .str.strip()
+            .str.replace('"', '')
+            .str.lower()
+            .str.replace(" ", "_")
+            .str.replace("'", "_")
+            .str.normalize("NFKD")
+            .str.encode("ascii", errors="ignore")
+            .str.decode("ascii")
+)        
+        dfs.append(df)
+        logger.info(f"  {key.split('/')[-1]} : {len(df)} lignes")
 
-    df = pd.read_excel(dest)
+    consolidated = pd.concat(dfs, ignore_index=True)
 
-    # Normaliser les noms de colonnes
-    df.columns = df.columns.str.strip().str.lower()
-
-    logger.info(f"Stations chargées : {len(df)} | Colonnes : {df.columns.tolist()}")
-    return df
-
-
-def filter_idf(df: pd.DataFrame) -> pd.DataFrame:
-    """Filtre les stations d'Île-de-France."""
-    # Le code station commence par le numéro de département
-    mask = df["code_station"].astype(str).str[:2].isin(DEPTS_IDF)
-    return df[mask].copy()
-
-
-def exclude_jo(df: pd.DataFrame) -> pd.DataFrame:
-    """Exclut la période des JO Paris 2024."""
-    mask = ~df["datetime_utc"].between(JO_START, JO_END)
-    n_excluded = (~mask).sum()
-    if n_excluded > 0:
-        logger.info(f"Exclusion JO 2024 : {n_excluded} lignes supprimées")
-    return df[mask].copy()
-
-
-def load_and_clean(filepath: Path) -> pd.DataFrame:
-    """Charge et nettoie un fichier CSV LCSQA."""
-    df = pd.read_csv(filepath, sep=";", encoding="utf-8-sig", low_memory=False)
-   
-    print("oui1")
-
+    # Renommage des colonnes clés
     rename_map = {
-        "Date de début"        : "datetime_utc",
-        "code site"            : "code_station",
-        "nom site"             : "nom_station",
-        "type d'implantation"  : "type_implantation",
-        "Polluant"             : "polluant",
-        "type d'influence"     : "type_influence",
-        "valeur brute"               : "valeur_ug_m3",
-        "unité de mesure"      : "unite",
-        "code qualité"         : "code_qualite",
-        "validé"               : "valide",
-        "X"                    : "lon",
-        "Y"                    : "lat",
-    }
-
-    # Filtrage PM2.5 après chargement
-    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
-    print("oui2")
-    df = df[df["polluant"] == "PM2.5"].copy()
-    print("oui3")
+        "date_de_debut"      : "datetime_debut",
+        "date_de_fin"        : "datetime_fin",
+        "code_site"          : "code_station",
+        "nom_site"           : "nom_station",
+        "type_d_implantation": "type_station",
+        "valeur"             : "pm25_valide",
+        "valeur_brute"       : "pm25_brute",
+        "code_qualite"       : "code_qualite",
+        "validite"           : "validite",
+        "latitude"           : "lat",
+        "longitude"          : "lon",
+    } 
+    consolidated = consolidated.rename(columns={k: v for k, v in rename_map.items() if k in consolidated.columns})
 
     # Conversion datetime
-    df["datetime_utc"] = pd.to_datetime(df["datetime_utc"], utc=True, errors="coerce")
-    df = df.dropna(subset=["datetime_utc"])
+    consolidated["datetime_debut"] = pd.to_datetime(consolidated["datetime_debut"], errors="coerce")
 
-    # Conversion valeur numérique
-    df["valeur_ug_m3"] = pd.to_numeric(
-        df["valeur_ug_m3"].astype(str).str.replace(",", "."),
-        errors="coerce"
+    consolidated["pm25_brute"] = pd.to_numeric(
+    consolidated["pm25_brute"].astype(str).str.replace(",", "."),
+    errors="coerce"
     )
 
-    # Suppression des valeurs physiquement impossibles
-    # df = df[(df["valeur_ug_m3"] >= 0) & (df["valeur_ug_m3"] <= 500)]
-
-    return df
-
-
-# ── Fonction principale ──────────────────────────────────────────
-
-def collect_lcsqa() -> pd.DataFrame:
-    """
-    Collecte complète LCSQA pour PM2.5, toutes années, IDF uniquement.
-    Itère jour par jour, filtre PM2.5 et les stations IDF.
-    Retourne un DataFrame consolidé.
-    """
-    all_dfs = []
-
-    for annee in ANNEES:
-        logger.info(f"Début collecte année {annee}")
-        debut = datetime.date(annee, 1, 1)
-        fin = datetime.date(annee, 12, 31)
-        jours = [debut + datetime.timedelta(days=i) for i in range((fin - debut).days + 1)]
-
-        for jour in tqdm(jours, desc=f"{annee}"):
-            url = build_url(jour.year, jour.month, jour.day)
-            dest = RAW_DIR / f"FR_E2_{jour}.csv"
-
-            success = download_file(url, dest)
-            if not success:
-                logger.warning(f"Fichier manquant : {jour} — ignoré")
-                continue
-
-            try:
-                df = load_and_clean(dest)
-            except Exception as e:
-                logger.error(f"Erreur lecture {dest.name} : {e}")
-                continue
-
-            if df.empty:
-                continue
-
-            df = filter_idf(df)
-            df["annee"] = annee
-            all_dfs.append(df)
-
-            # Pause courte pour ne pas surcharger le serveur
-            time.sleep(0.2)
-
-        logger.info(f"Année {annee} terminée — {len(all_dfs)} fichiers chargés au total")
-
-    if not all_dfs:
-        raise RuntimeError("Aucune donnée collectée — vérifiez les URLs et le réseau")
-
-    consolidated = pd.concat(all_dfs, ignore_index=True)
-    logger.info(
-        f"Total consolidé : {len(consolidated)} lignes | "
-        f"{consolidated['code_station'].nunique()} stations"
-    )
-
+    logger.info(f"LCSQA consolidé : {len(consolidated)} lignes | {consolidated['code_station'].nunique()} stations")
     return consolidated
 
 
-# ── Upload S3 ────────────────────────────────────────────────────
+# ── Chargement Météo-France ───────────────────────────────────────
 
-def upload_to_s3(df: pd.DataFrame, filename: str) -> None:
-    """Upload un DataFrame en CSV vers S3 SSPCloud."""
-    s3 = boto3.client(
-        "s3",
-        endpoint_url = os.getenv("S3_ENDPOINT_URL"),
-        aws_access_key_id  = os.getenv("S3_ACCESS_KEY"),
-        aws_secret_access_key = os.getenv("S3_SECRET_KEY"),
+# Colonnes utiles uniquement
+COLS_METEO = [
+    "num_poste", "nom_usuel", "lat", "lon", "alti",
+    "aaaammjjhh",   # datetime
+    "ff",           # vent vitesse
+    "dd",           # vent direction
+    "t",            # température
+    "u",            # humidité
+    "rr1",          # précipitations
+    "pres",         # pression
+]
+
+def load_meteo() -> pd.DataFrame:
+    prefix = "projet-qualite-air/raw/meteo/"
+    keys   = sorted(list_s3_files(prefix))
+    logger.info(f"Météo : {len(keys)} fichiers trouvés")
+
+    dfs = []
+    for key in keys:
+        df = read_s3_csv_gz(key, sep=";", encoding="utf-8", low_memory=False)
+        df.columns = df.columns.str.strip().str.lower()
+
+        # Garder uniquement les colonnes utiles disponibles
+        cols_disponibles = [c for c in COLS_METEO if c in df.columns]
+        df = df[cols_disponibles].copy()
+
+        dfs.append(df)
+        logger.info(f"  {key.split('/')[-1]} : {len(df)} lignes")
+
+    consolidated = pd.concat(dfs, ignore_index=True)
+
+    # Renommage
+    rename_map = {
+        "num_poste"  : "code_station_meteo",
+        "nom_usuel"  : "nom_station_meteo",
+        "lat"        : "lat_meteo",
+        "lon"        : "lon_meteo",
+        "alti"       : "altitude",
+        "aaaammjjhh" : "datetime_meteo",
+        "ff"         : "vent_vitesse_ms",
+        "dd"         : "vent_direction_deg",
+        "t"          : "temperature_c",
+        "u"          : "humidite_pct",
+        "rr1"        : "pluie_mm",
+        "pres"       : "pression_hpa",
+    }
+    consolidated = consolidated.rename(columns={k: v for k, v in rename_map.items() if k in consolidated.columns})
+
+    # Conversion datetime (format YYYYMMDDHH)
+    consolidated["datetime_meteo"] = pd.to_datetime(
+        consolidated["datetime_meteo"].astype(str),
+        format="%Y%m%d%H",
+        errors="coerce"
     )
-    bucket = os.getenv("S3_BUCKET")
-    key = f"raw/lcsqa/{filename}"
 
-    buffer = io.StringIO()
-    df.to_csv(buffer, index=False)
-    buffer.seek(0)
+    # Température : déjà en dixièmes de °C → convertir en °C
+    if "temperature_c" in consolidated.columns:
+        consolidated["temperature_c"] = pd.to_numeric(consolidated["temperature_c"], errors="coerce") / 10
 
-    s3.put_object(Bucket=bucket, Key=key, Body=buffer.getvalue())
-    logger.info(f"Uploadé sur S3 : s3://{bucket}/{key}")
+    # Pression : déjà en dixièmes de hPa → convertir en hPa
+    if "pression_hpa" in consolidated.columns:
+        consolidated["pression_hpa"] = pd.to_numeric(consolidated["pression_hpa"], errors="coerce") / 10
 
+    logger.info(f"Météo consolidée : {len(consolidated)} lignes | {consolidated['code_station_meteo'].nunique()} stations")
+    return consolidated
 
-# ── Point d'entrée ───────────────────────────────────────────────
+# ── Chargement IREP ──────────────────────────────────────────────
 
-if __name__ == "__main__":
-    df = collect_lcsqa()
+def load_irep() -> pd.DataFrame:
+    """
+    Charge le fichier IREP consolidé (émissions industrielles IDF 2021-2024).
+    Retourne un DataFrame avec les colonnes normalisées.
+    """
+    key = "projet-qualite-air/raw/irep/irep_2021_2024_idf.csv"
+    df  = read_s3_csv(key, encoding="utf-8", low_memory=False)
+    df.columns = df.columns.str.strip().str.lower()
 
-    # Sauvegarde locale
-    out = Path("data/raw/lcsqa_idf_pm25_2021_2025.csv")
-    df.to_csv(out, index=False)
-    logger.info(f"Sauvegardé localement : {out}")
+    # Renommage colonnes clés
+    rename_map = {
+        "coordonnees_x" : "lon_irep",
+        "coordonnees_y" : "lat_irep",
+        "quantite"      : "emission_kg",
+        "polluant"      : "polluant_irep",
+        "milieu"        : "milieu_irep",
+    }
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    # Upload S3
-    upload_to_s3(df, "lcsqa_idf_pm25_2021_2025.csv")
+    # Conversion numérique
+    df["emission_kg"] = pd.to_numeric(df["emission_kg"], errors="coerce")
+
+    logger.info(f"IREP : {len(df)} lignes | {df['identifiant'].nunique()} établissements")
+    return df

@@ -221,3 +221,13 @@ def verifier_s3(prefix: str) -> None:
     for f in files:
         print(f" {f['Key'].split('/')[-1]:55s} {f['Size']/1e6:6.1f} Mo")
     print(f"   {len(files)} fichiers")
+
+
+def load_dataset_consolide() -> pd.DataFrame:
+    """Charge le dataset consolidé final depuis S3."""
+    key = "projet-qualite-air/processed/dataset_consolide.csv"
+    df  = read_s3_csv(key, encoding="utf-8")
+    df["datetime_debut"] = pd.to_datetime(df["datetime_debut"])
+    logger.info(f"Dataset consolidé : {len(df):,} lignes | {len(df.columns)} colonnes")
+    logger.info(f"Période : {df['datetime_debut'].min()} → {df['datetime_debut'].max()}")
+    return df

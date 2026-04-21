@@ -9,8 +9,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 
 
-def prepare_features(df, features, target, date_col):
-    df = df.sort_values(date_col).copy()
+def prepare_features(df, features, target):
+    df = df.copy()
     df = df.dropna(subset=features + [target])
     X = df[features]
     y = df[target]
@@ -24,16 +24,6 @@ def temporal_split(X, y, train_size=0.8):
     y_train = y.iloc[:split]
     y_test = y.iloc[split:]
     return X_train, X_test, y_train, y_test
-
-
-def evaluate_model(model, X_test, y_test):
-    y_pred = model.predict(X_test)
-    results = {
-        "f1_score": f1_score(y_test, y_pred),
-        "confusion_matrix": confusion_matrix(y_test, y_pred),
-        "classification_report": classification_report(y_test, y_pred)
-    }
-    return results
 
 
 # Le modèle CART
@@ -83,4 +73,13 @@ def train_logistic_regression(X_train, y_train, X_test):
 
     return model, scaler, X_train_scaled, X_test_scaled
 
+
+def evaluate_model(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    results = {
+        "f1_score": f1_score(y_test, y_pred),
+        "confusion_matrix": confusion_matrix(y_test, y_pred),
+        "classification_report": classification_report(y_test, y_pred)
+    }
+    return results
 

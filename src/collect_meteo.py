@@ -1,7 +1,7 @@
 """
 Collecte des données météo horaires Météo-France
 Source : meteo.data.gouv.fr / data.gouv.fr
-Départements : Île-de-France (75, 77, 78, 91, 92, 93, 94, 95)
+zone : Île-de-France (75, 77, 78, 91, 92, 93, 94, 95)
 Années : 2021-2025
 """
 
@@ -19,7 +19,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# ── Configuration ────────────────────────────────────────────────
+# Configuration 
 
 DATASET_ID   = "6569b4473bedf2e7abad3b72"
 DATAGOUV_URL = f"https://www.data.gouv.fr/api/1/datasets/{DATASET_ID}/"
@@ -31,7 +31,7 @@ RAW_DIR = Path("data/raw/meteo")
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ── Filtrage ─────────────────────────────────────────────────────
+# Filtrage 
 
 def is_relevant(resource: dict) -> bool:
     """
@@ -48,7 +48,7 @@ def is_relevant(resource: dict) -> bool:
     return dept_ok and annee_ok
 
 
-# ── Téléchargement ───────────────────────────────────────────────
+#  Téléchargement 
 
 def download_resource(resource: dict) -> Path | None:
     """
@@ -88,7 +88,7 @@ def download_resource(resource: dict) -> Path | None:
         return None
 
 
-# ── Upload S3 ────────────────────────────────────────────────────
+#  Upload S3 
 
 def upload_to_s3(filepath: Path) -> None:
     """Upload un fichier local vers S3 SSPCloud."""
@@ -106,7 +106,7 @@ def upload_to_s3(filepath: Path) -> None:
     logger.info(f"Uploadé sur S3 : s3://{bucket}/{key}")
 
 
-# ── Fonction principale ──────────────────────────────────────────
+# Fonction principale 
 
 def collect_meteo() -> None:
     """

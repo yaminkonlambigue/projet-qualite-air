@@ -4,7 +4,7 @@ Source : geodair.fr
 Polluant : PM2.5 (code 39)
 Statistique : moyenne horaire (code a1)
 Période : 2021-2025
-Zone : Île-de-France (filtrage post-téléchargement)
+Zone : Île-de-France (filtrage apres téléchargement)
 """
 
 import os
@@ -32,21 +32,21 @@ CODE_STAT     = "a1"
 #DEPTS_IDF = ["75", "77", "78", "91", "92", "93", "94", "95"]
 
 TRIMESTRES = [
-#   (date(2021,  1,  1), date(2021,  3, 31)),
-#    (date(2021,  4,  1), date(2021,  6, 30)),
-#    (date(2021,  7,  1), date(2021,  9, 30)),
-#    (date(2021, 10,  1), date(2021, 12, 31)),
-#    (date(2022,  1,  1), date(2022,  3, 31)),
-#    (date(2022,  4,  1), date(2022,  6, 30)),
-#    (date(2022,  7,  1), date(2022,  9, 30)),
-#    (date(2022, 10,  1), date(2022, 12, 31)),
-#    (date(2023,  1,  1), date(2023,  3, 31)),
-#    (date(2023,  4,  1), date(2023,  6, 30)),
-#    (date(2023,  7,  1), date(2023,  9, 30)),
-#    (date(2023, 10,  1), date(2023, 12, 31)),
-#    (date(2024,  1,  1), date(2024,  3, 31)),
-#   (date(2024,  4,  1), date(2024,  6, 30)),
-#    (date(2024,  7,  1), date(2024,  9, 30)),
+    (date(2021,  1,  1), date(2021,  3, 31)),
+    (date(2021,  4,  1), date(2021,  6, 30)),
+    (date(2021,  7,  1), date(2021,  9, 30)),
+    (date(2021, 10,  1), date(2021, 12, 31)),
+    (date(2022,  1,  1), date(2022,  3, 31)),
+    (date(2022,  4,  1), date(2022,  6, 30)),
+    (date(2022,  7,  1), date(2022,  9, 30)),
+    (date(2022, 10,  1), date(2022, 12, 31)),
+    (date(2023,  1,  1), date(2023,  3, 31)),
+    (date(2023,  4,  1), date(2023,  6, 30)),
+    (date(2023,  7,  1), date(2023,  9, 30)),
+    (date(2023, 10,  1), date(2023, 12, 31)),
+    (date(2024,  1,  1), date(2024,  3, 31)),
+    (date(2024,  4,  1), date(2024,  6, 30)),
+    (date(2024,  7,  1), date(2024,  9, 30)),
     (date(2024, 10,  1), date(2024, 12, 31)),
     (date(2025,  1,  1), date(2025,  3, 31)),
     (date(2025,  4,  1), date(2025,  6, 30)),

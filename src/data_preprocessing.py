@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from great_tables import GT, loc, style
 import seaborn as sns
-
+import numpy as np
 
 # ============================================================================
 # 1. ANALYSE DESCRITPIVE DE LA VARIABLE CIBLE (PM2.5)
@@ -458,3 +458,129 @@ def graphique_heatmap_heure_jour(df, colonne="pm25", heure="heure", jour_semaine
     return fig, ax
 
 
+# ============================================================================
+# 3. ANALYSE SPATIALE (COMPARAISON ENTRE STATIONS)
+# ============================================================================
+
+def tableau_comparaison_stations(df, station="station", colonne="pm25", seuil="depassement_seuil", date="date", industrie="nombre_industrie"):
+    """
+    Tableau comparatif des stations: moyenne PM2.5, taux dépassement, densité.
+    Compare les caractéristiques de pollution entre villes.
+    Args:
+        df (pd.DataFrame): DataFrame avec colonnes 'station', 'pm25_µg_m3', etc.
+        station (str): Colonne contenant les noms de station
+        colonne (str): Colonne à analyser (défaut: "pm25")
+        seuil (str): Colonne du dépassement de seuil
+        date (str): Colonne de date pour compter les observations
+        industrie (str): Colonne du nombre d'industries
+    Returns:
+        GT: Objet great_tables GT
+    Exemple:
+        >>> gt = tableau_comparaison_stations(df)
+        >>> gt.show()
+    """
+    station_comp = df.groupby(station).agg({
+        colonne: ['mean', 'std'],
+        seuil: 'mean',
+        date: 'count'
+    }).round(2)
+    station_comp.columns = ['Moy PM2.5', 'Sd PM2.5', 'Taux dépassement', 'Nb obs']
+    station_comp['Taux dépassement %'] = (station_comp['Taux dépassement'] * 100).round(1)
+    station_comp = station_comp.drop('Taux dépassement', axis=1)
+    station_comp = station_comp.sort_values('Moy PM2.5', ascending=False)
+    station_comp_reset = station_comp.reset_index().rename(columns={station: 'Station'})
+    gt = (
+        GT(station_comp_reset)
+        .tab_header(
+            title="Tableau Comparatif par Station",
+            subtitle="Moyennes PM2.5, écarts-types, taux de dépassement et nombre d'observations"
+        )
+        .tab_options(
+            column_labels_font_weight="bold",
+            table_font_size="12px"
+        )
+        .fmt_number(
+            columns=['Moy PM2.5', 'SD PM2.5'],
+            decimals=2
+        )
+        .fmt_number(
+            columns=['Taux dépassement %'],
+            decimals=1
+        )
+        .fmt_integer(
+            columns=['Nb obs']
+        )
+        .cols_align(align="center", columns=['Moy PM2.5', 'SD PM2.5', 'Taux dépassement %', 'Nb obs'])
+        .opt_row_striping()
+        # En-tête coloré
+        .tab_style(
+            style=style.fill(color="#2E86AB"),
+            locations=loc.header()
+        )
+        .tab_style(
+            style=style.text(color="white", weight="bold"),
+            locations=loc.header()
+        )
+        .tab_style(
+            style=style.fill(color="#FFE5E5"),
+            locations=loc.body(
+                rows=[i for i, val in enumerate(station_comp_reset['Taux dépassement %']) if val > 20]
+            )
+        )
+    )
+    return gt.show()
+
+
+def graphique_boxplot_stations(df, station="station", colonne="pm25", figsize=(14, 6)):
+    """
+    Boxplots par station: distribution de PM2.5 par ville.
+    Compare visuellement les différences entre stations.
+    Args:
+        df (pd.DataFrame): DataFrame avec colonnes 'station' et 'pm25_µg_m3'
+        figsize (tuple): Dimensions de la figure
+    Returns:
+        fig, ax: Objet figure et axes matplotlib
+    Exemple:
+        >>> fig, ax = graphique_boxplot_stations(df)
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    sns.boxplot(data=df, x=station, y=colonne, ax=ax, palette='Set2')
+    ax.axhline(y=25, color='red', linestyle='--', linewidth=2, label='Seuil alerte')
+    ax.set_xlabel('Station', fontsize=12, fontweight='bold')
+    ax.set_ylabel('PM2.5 (µg/m³)', fontsize=12, fontweight='bold')
+    ax.set_title('Boxplots par Station - PM2.5', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis='y')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    return fig, ax
+
+
+def graphique_bar_depassements_stations(df, station="station", seuil="depassement_seuil", figsize=(14, 6)):
+    """
+    Bar chart: nombre cumulé de jours de dépassement par station.
+    Identifie les stations les plus problématiques.
+    Args:
+        df (pd.DataFrame): DataFrame avec colonnes 'station' et 'depassement_seuil'
+        figsize (tuple): Dimensions de la figure
+    Returns:
+        fig, ax: Objet figure et axes matplotlib
+    Exemple:
+        >>> fig, ax = graphique_bar_depassements_stations(df)
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    exceeds = df.groupby(station)[seuil].sum().sort_values(ascending=False)
+    bars = ax.bar(exceeds.index, exceeds.values, color='red', alpha=0.7, edgecolor='black')
+    # Ajouter les valeurs sur les barres
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+                f'{int(height)}',
+                ha='center', va='bottom', fontweight='bold')
+    ax.set_xlabel('Station', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Nombre de dépassements', fontsize=12, fontweight='bold')
+    ax.set_title('Nombre Cumulé de Dépassements par Station', fontsize=14, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    return fig, ax

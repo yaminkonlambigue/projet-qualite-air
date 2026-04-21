@@ -188,7 +188,8 @@ def load_irep() -> pd.DataFrame:
     Retourne un DataFrame avec les colonnes normalisées.
     """
     key = "projet-qualite-air/raw/irep/irep_2021_2024_idf.csv"
-    df  = read_s3_csv(key, encoding="utf-8", low_memory=False)
+    
+    df = read_s3_csv(key, encoding="latin-1", low_memory=False)
     df.columns = df.columns.str.strip().str.lower()
 
     # Renommage colonnes clés
@@ -206,3 +207,17 @@ def load_irep() -> pd.DataFrame:
 
     logger.info(f"IREP : {len(df)} lignes | {df['identifiant'].nunique()} établissements")
     return df
+
+
+def verifier_s3(prefix: str) -> None:
+    """Affiche les fichiers présents sur S3 sous un préfixe donné."""
+    s3     = get_s3_client()
+    bucket = get_bucket()
+    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    files  = response.get("Contents", [])
+    if not files:
+        print(f" Aucun fichier trouvé sous {prefix}")
+        return
+    for f in files:
+        print(f" {f['Key'].split('/')[-1]:55s} {f['Size']/1e6:6.1f} Mo")
+    print(f"   {len(files)} fichiers")

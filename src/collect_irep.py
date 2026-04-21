@@ -24,8 +24,7 @@ logger = logging.getLogger(__name__)
 
 ANNEES_IREP = [2021, 2022, 2023, 2024]
 BASE_URL    = "https://files.georisques.fr/irep/{annee}.zip"
-
-DEPTS_IDF = ["75", "77", "78", "91", "92", "93", "94", "95"]
+DEPTS_IDF   = ["75", "77", "78", "91", "92", "93", "94", "95"]
 
 RAW_DIR = Path("data/raw/irep")
 RAW_DIR.mkdir(parents=True, exist_ok=True)
@@ -36,8 +35,7 @@ RAW_DIR.mkdir(parents=True, exist_ok=True)
 def download_and_extract(url: str, annee: int) -> Path:
     """
     Télécharge le ZIP IREP pour une année donnée et extrait les fichiers.
-    Retourne le dossier d'extraction.
-    Skip si déjà extrait.
+    Retourne le dossier d'extraction. Skip si déjà extrait.
     """
     zip_dest    = RAW_DIR / f"irep_{annee}.zip"
     extract_dir = RAW_DIR / str(annee)
@@ -46,7 +44,6 @@ def download_and_extract(url: str, annee: int) -> Path:
         logger.info(f"Déjà extrait : {extract_dir} — skip")
         return extract_dir
 
-    # Téléchargement
     if not zip_dest.exists():
         logger.info(f"Téléchargement IREP {annee}...")
         r = requests.get(url, timeout=120)
@@ -54,7 +51,6 @@ def download_and_extract(url: str, annee: int) -> Path:
         zip_dest.write_bytes(r.content)
         logger.info(f"Téléchargé : {zip_dest.name} ({zip_dest.stat().st_size / 1e6:.1f} Mo)")
 
-    # Extraction
     extract_dir.mkdir(exist_ok=True)
     with zipfile.ZipFile(zip_dest, "r") as z:
         z.extractall(extract_dir)
@@ -63,26 +59,28 @@ def download_and_extract(url: str, annee: int) -> Path:
     return extract_dir
 
 
+
+
+
 # ── Chargement et filtrage IDF ────────────────────────────────────
 
 def load_and_filter(extract_dir: Path, annee: int) -> pd.DataFrame:
     """
     Charge emissions.csv (polluants atmosphériques) et etablissements.csv
-    (coordonnées GPS), filtre sur l'IDF et joint les deux.
+    (coordonnées GPS), filtre sur l'IDF, corrige l'encodage et joint les deux.
     """
-    # Chemin vers les fichiers (ils sont dans un sous-dossier portant l'année)
     sub = extract_dir / str(annee)
     if not sub.exists():
-        sub = extract_dir  # fallback si pas de sous-dossier
+        sub = extract_dir
 
-    emissions_path     = sub / "emissions.csv"
+    emissions_path      = sub / "emissions.csv"
     etablissements_path = sub / "etablissements.csv"
 
-    # Chargement emissions
-    df_em = pd.read_csv(emissions_path, sep=";", encoding="latin-1", low_memory=False)
+    # ── Emissions ──
+    df_em = pd.read_csv(emissions_path, sep=";", encoding="utf-8", low_memory=False)
     df_em.columns = df_em.columns.str.strip().str.lower()
+    
 
-    # Filtre IDF avec strip sur les espaces
     df_em_idf = df_em[
         df_em["code_departement"].astype(str).str.strip().isin(DEPTS_IDF)
     ].copy()
@@ -95,23 +93,25 @@ def load_and_filter(extract_dir: Path, annee: int) -> pd.DataFrame:
         ].copy()
         logger.info(f"  Après filtre AIR : {len(df_em_idf)} lignes")
 
-    # Chargement établissements (pour coordonnées GPS)
-    df_et = pd.read_csv(etablissements_path, sep=";", encoding="latin-1", low_memory=False)
+    # ── Etablissements (coordonnées GPS) ──
+    df_et = pd.read_csv(etablissements_path, sep=";", encoding="utf-8", low_memory=False)
     df_et.columns = df_et.columns.str.strip().str.lower()
+   
+
     df_et_idf = df_et[
         df_et["code_departement"].astype(str).str.strip().isin(DEPTS_IDF)
     ][["identifiant", "coordonnees_x", "coordonnees_y", "code_epsg"]].copy()
     logger.info(f"  etablissements.csv IDF : {len(df_et_idf)} établissements")
 
-    # Jointure sur identifiant
+    # ── Jointure ──
     df_merged = df_em_idf.merge(df_et_idf, on="identifiant", how="left")
     df_merged["annee"] = annee
     logger.info(f"  Après jointure : {len(df_merged)} lignes")
 
     return df_merged
 
-# ── Upload S3 ────────────────────────────────────────────────────
 
+# ── Upload S3 ────────────────────────────────────────────────────
 
 def upload_to_s3(filepath: Path) -> None:
     """Upload un fichier local vers S3 SSPCloud."""
@@ -133,7 +133,7 @@ def upload_to_s3(filepath: Path) -> None:
 def collect_irep() -> None:
     """
     Collecte les données IREP pour 2021-2024,
-    filtre sur l'IDF et consolide en un seul fichier.
+    filtre sur l'IDF et consolide en un seul fichier encodé en utf-8.
     """
     all_dfs = []
 
@@ -143,7 +143,7 @@ def collect_irep() -> None:
             extract_dir = download_and_extract(url, annee)
             df          = load_and_filter(extract_dir, annee)
             all_dfs.append(df)
-            logger.info(f"IREP {annee} : {len(df)} établissements IDF chargés")
+            logger.info(f"IREP {annee} : {len(df)} lignes IDF chargées")
         except Exception as e:
             logger.error(f"Erreur pour {annee} : {e}")
             continue
@@ -151,16 +151,14 @@ def collect_irep() -> None:
     if not all_dfs:
         raise RuntimeError("Aucune donnée IREP collectée")
 
-    # Consolidation toutes années
     df_all = pd.concat(all_dfs, ignore_index=True)
     logger.info(f"Total consolidé : {len(df_all)} lignes | {df_all['annee'].value_counts().to_dict()}")
 
-    # Sauvegarde locale
+    # Sauvegarde en utf-8 explicite
     out = RAW_DIR / "irep_2021_2024_idf.csv"
-    df_all.to_csv(out, index=False)
+    df_all.to_csv(out, index=False, encoding="utf-8")
     logger.info(f"Sauvegardé localement : {out}")
 
-    # Upload S3
     upload_to_s3(out)
     logger.info("Collecte IREP terminée.")
 

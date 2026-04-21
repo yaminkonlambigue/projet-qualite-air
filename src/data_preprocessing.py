@@ -786,6 +786,7 @@ def histogramme_densité_superposée(df, colonne, groupe='depasse_seuil_24h', fi
 # 5. ANALYSE DE PERSISTANCE (AUTO-CORRÉLATION)
 # ============================================================================
 
+
 def graphique_acf_pm25(df, colonne="pm25", date="date", nlags=48, figsize=(14, 6)):
     """
     ACF (Autocorrelation Function): corrélation de PM2.5 avec lui-même.
